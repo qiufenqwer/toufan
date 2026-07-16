@@ -1036,8 +1036,35 @@
             const nameIndex = headers.findIndex(h => h.includes('素材名称') || h.includes('素材'));
             if (idIndex === -1) return data;
             
-            // 确定数值列（需要合计的列）
-            const numericColumns = ['消耗', '成交', '点击', '展示', '费用', '计划', '商家', 'ROI', '转化', 'CTR'];
+            const normalizeHeader = value => value.toString().trim().toLowerCase();
+            const findHeader = (...keywords) => {
+                const normalizedKeywords = keywords.map(normalizeHeader);
+                return headers.find(header => normalizedKeywords.includes(normalizeHeader(header))) ||
+                    headers.find(header => normalizedKeywords.some(keyword => normalizeHeader(header).includes(keyword)));
+            };
+            const parseNumber = value => {
+                const parsed = Number.parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
+                return Number.isFinite(parsed) ? parsed : 0;
+            };
+            const formatPercent = value => `${value.toFixed(2)}%`;
+            const consumeHeader = findHeader('整体消耗', '消耗');
+            const revenueHeader = findHeader('整体成交金额', '成交金额');
+            const clicksHeader = findHeader('整体点击次数', '点击次数');
+            const impressionsHeader = findHeader('整体展示次数', '展示次数');
+            const conversionCountHeader = findHeader('整体转化次数', '转化次数', '成交次数');
+            const roiHeader = findHeader('整体付费ROI', '付费ROI', 'ROI');
+            const ctrHeader = findHeader('整体点击率', '点击率', 'CTR');
+            const conversionRateHeader = findHeader('整体转化率', '转化率', 'CVR');
+            const rateHeaders = new Set([roiHeader, ctrHeader, conversionRateHeader].filter(Boolean));
+            const additiveHeaders = new Set([
+                consumeHeader,
+                revenueHeader,
+                clicksHeader,
+                impressionsHeader,
+                conversionCountHeader,
+                findHeader('素材关联的计划数量', '计划数量'),
+                findHeader('素材关联的商家数量', '商家数量')
+            ].filter(Boolean));
             
             // 遍历数据行（跳过表头）
             data.slice(1).forEach((row, rowIndex) => {
@@ -1051,9 +1078,14 @@
                         enumerable: false,
                         writable: true
                     });
+                    Object.defineProperty(mergedRow, '__rateAccumulators', {
+                        value: {},
+                        enumerable: false,
+                        writable: true
+                    });
                     // 初始化数值字段为0
                     headers.forEach(header => {
-                        if (numericColumns.some(col => header.includes(col))) {
+                        if (additiveHeaders.has(header)) {
                             mergedRow[header] = 0;
                         }
                     });
@@ -1066,10 +1098,19 @@
                     existingRow.__sourceIndexes.push(rowIndex + 1);
                 }
                 headers.forEach(header => {
-                    if (numericColumns.some(col => header.includes(col))) {
-                        const value = parseFloat(row[header]?.toString().replace(/[^\d.]/g, '') || '0');
-                        const existingValue = parseFloat(existingRow[header]?.toString().replace(/[^\d.]/g, '') || '0');
+                    if (additiveHeaders.has(header)) {
+                        const value = parseNumber(row[header]);
+                        const existingValue = parseNumber(existingRow[header]);
                         existingRow[header] = existingValue + value;
+                    } else if (rateHeaders.has(header)) {
+                        const weight = header === ctrHeader ? parseNumber(row[impressionsHeader]) :
+                            header === conversionRateHeader ? parseNumber(row[clicksHeader]) : 1;
+                        const rateValue = parseNumber(row[header]);
+                        if (!existingRow.__rateAccumulators[header]) {
+                            existingRow.__rateAccumulators[header] = { weightedValue: 0, weight: 0 };
+                        }
+                        existingRow.__rateAccumulators[header].weightedValue += rateValue * (weight || 1);
+                        existingRow.__rateAccumulators[header].weight += weight || 1;
                     } else if (!existingRow[header]) {
                         // 非数值字段取第一个值
                         existingRow[header] = row[header];
@@ -1080,20 +1121,29 @@
             // 创建结果数组
             mergedData.push(data[0]); // 添加表头
             materialMap.forEach(row => {
-                // 重新计算ROI和点击率
-                const consume = parseFloat(row[headers.find(h => h.includes('消耗'))] || '0');
-                const revenue = parseFloat(row[headers.find(h => h.includes('成交'))] || '0');
-                const clicks = parseFloat(row[headers.find(h => h.includes('点击次数'))] || '0');
-                const impressions = parseFloat(row[headers.find(h => h.includes('展示'))] || '0');
+                const consume = parseNumber(row[consumeHeader]);
+                const revenue = parseNumber(row[revenueHeader]);
+                const clicks = parseNumber(row[clicksHeader]);
+                const impressions = parseNumber(row[impressionsHeader]);
+                const conversions = parseNumber(row[conversionCountHeader]);
                 
-                if (headers.some(h => h.includes('ROI'))) {
-                    const roiHeader = headers.find(h => h.includes('ROI'));
+                if (roiHeader) {
                     row[roiHeader] = consume > 0 ? (revenue / consume).toFixed(2) : '0';
                 }
                 
-                if (headers.some(h => h.includes('点击率'))) {
-                    const ctrHeader = headers.find(h => h.includes('点击率'));
-                    row[ctrHeader] = impressions > 0 ? ((clicks / impressions) * 100).toFixed(2) + '%' : '0%';
+                if (ctrHeader) {
+                    row[ctrHeader] = impressions > 0 ? formatPercent((clicks / impressions) * 100) : '0.00%';
+                }
+
+                if (conversionRateHeader) {
+                    const accumulator = row.__rateAccumulators[conversionRateHeader];
+                    if (conversionCountHeader && clicks > 0) {
+                        row[conversionRateHeader] = formatPercent((conversions / clicks) * 100);
+                    } else if (accumulator && accumulator.weight > 0) {
+                        row[conversionRateHeader] = formatPercent(accumulator.weightedValue / accumulator.weight);
+                    } else {
+                        row[conversionRateHeader] = '0.00%';
+                    }
                 }
                 
                 mergedData.push(row);
