@@ -1046,6 +1046,12 @@
                 const parsed = Number.parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
                 return Number.isFinite(parsed) ? parsed : 0;
             };
+            const parsePercent = value => {
+                const text = String(value ?? '').trim();
+                const parsed = parseNumber(text);
+                if (!Number.isFinite(parsed)) return 0;
+                return text.includes('%') ? parsed : parsed > 0 && parsed <= 1 ? parsed * 100 : parsed;
+            };
             const formatPercent = value => `${value.toFixed(2)}%`;
             const consumeHeader = findHeader('整体消耗', '消耗');
             const revenueHeader = findHeader('整体成交金额', '成交金额');
@@ -1105,7 +1111,7 @@
                     } else if (rateHeaders.has(header)) {
                         const weight = header === ctrHeader ? parseNumber(row[impressionsHeader]) :
                             header === conversionRateHeader ? parseNumber(row[clicksHeader]) : 1;
-                        const rateValue = parseNumber(row[header]);
+                        const rateValue = parsePercent(row[header]);
                         if (!existingRow.__rateAccumulators[header]) {
                             existingRow.__rateAccumulators[header] = { weightedValue: 0, weight: 0 };
                         }
