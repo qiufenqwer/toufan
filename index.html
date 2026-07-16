@@ -996,14 +996,16 @@
                 const impressions = parseNumber(row[impressionsHeader]);
                 const plans = parseNumber(row[plansHeader]);
                 const merchants = parseNumber(row[merchantsHeader]);
+                const ctr = parsePercent(row[ctrHeader]);
+                const effectiveClicks = clicks > 0 ? clicks :
+                    ctr > 0 && impressions > 0 ? (impressions * ctr) / 100 : 0;
                 
                 totalConsume += consume;
                 totalRevenue += revenue;
-                totalClicks += clicks;
+                totalClicks += effectiveClicks;
                 totalImpressions += impressions;
                 totalPlans += plans;
                 totalMerchants += merchants;
-                const ctr = parsePercent(row[ctrHeader]);
                 if (ctr > 0) {
                     const ctrWeight = impressions > 0 ? impressions : 1;
                     weightedCtr += ctr * ctrWeight;
@@ -1043,7 +1045,7 @@
                 {"指标名称":"总成交金额(元)","指标值":"¥" + totalRevenue.toFixed(2)},
                 {"指标名称":"整体付费ROI","指标值":overallROI},
                 {"指标名称":"整体点击率","指标值":overallCTR},
-                {"指标名称":"总点击次数","指标值":totalClicks.toString()},
+                {"指标名称":"总点击次数","指标值":Math.round(totalClicks).toString()},
                 {"指标名称":"总展示次数","指标值":totalImpressions.toLocaleString()},
                 {"指标名称":"平均千次展示费用(元)","指标值":"¥" + avgCPM},
                 {"指标名称":"平均素材时长","指标值":avgDurationStr}
@@ -1181,6 +1183,11 @@
                     } else {
                         row[ctrHeader] = row[ctrHeader] || '0.00%';
                     }
+                }
+
+                if (clicksHeader && clicks === 0 && impressions > 0 && ctrHeader) {
+                    const derivedClicks = Math.round((impressions * parsePercent(row[ctrHeader])) / 100);
+                    row[clicksHeader] = derivedClicks;
                 }
 
                 if (conversionRateHeader) {
