@@ -928,6 +928,7 @@
                 allData["原始数据"] = [{"素材名称":"素材名称","素材ID":"素材ID","素材评价":"素材评价","素材时长":"素材时长","素材创建时间":"素材创建时间","素材来源":"素材来源","标签":"标签","整体消耗":"整体消耗","整体付费ROI":"整体付费ROI","整体成交金额":"整体成交金额","整体点击率":"整体点击率","整体转化率":"整体转化率","整体点击次数":"整体点击次数","整体展示次数":"整体展示次数","整体千次展示费用":"整体千次展示费用","素材关联的计划数量":"素材关联的计划数量","素材关联的商家数量":"素材关联的商家数量"}];
             }
 
+            updateAllSheets();
             // 绑定事件
             bindEvents();
             // 加载默认页面
@@ -942,17 +943,21 @@
                 return;
             }
 
-            const headers = Object.keys(rawData[0]);
-            const dataRows = rawData.slice(1);
-            const findHeader = (...keywords) => headers.find(header =>
-                keywords.some(keyword => header.toLowerCase().includes(keyword.toLowerCase()))
-            );
+            const metricData = mergeDataByMaterialId(rawData);
+            const headers = Object.keys(metricData[0]);
+            const dataRows = metricData.slice(1);
+            const normalizeHeader = value => value.toString().trim().toLowerCase();
+            const findHeader = (...keywords) => {
+                const normalizedKeywords = keywords.map(normalizeHeader);
+                return headers.find(header => normalizedKeywords.includes(normalizeHeader(header))) ||
+                    headers.find(header => normalizedKeywords.some(keyword => normalizeHeader(header).includes(keyword)));
+            };
             const consumeHeader = findHeader('整体消耗', '消耗');
-            const revenueHeader = findHeader('整体成交金额', '成交金额', '成交');
+            const revenueHeader = findHeader('整体成交金额', '成交金额');
             const clicksHeader = findHeader('整体点击次数', '点击次数');
-            const impressionsHeader = findHeader('整体展示次数', '展示次数', '展示');
-            const plansHeader = findHeader('素材关联的计划数量', '计划数量', '计划');
-            const merchantsHeader = findHeader('素材关联的商家数量', '商家数量', '商家');
+            const impressionsHeader = findHeader('整体展示次数', '展示次数');
+            const plansHeader = findHeader('素材关联的计划数量', '计划数量');
+            const merchantsHeader = findHeader('素材关联的商家数量', '商家数量');
             const durationHeader = findHeader('素材时长', '时长');
             const parseNumber = value => {
                 const parsed = Number.parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
@@ -983,15 +988,24 @@
 
                 const duration = row[durationHeader];
                 if (duration) {
-                    const parts = duration.toString().split(':');
-                    if (parts.length === 2) {
-                        totalDuration += parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                    const parts = duration.toString().split(':').map(part => Number.parseInt(part, 10));
+                    if (parts.length === 3 && parts.every(Number.isFinite)) {
+                        totalDuration += parts[0] * 3600 + parts[1] * 60 + parts[2];
+                    } else if (parts.length === 2 && parts.every(Number.isFinite)) {
+                        totalDuration += parts[0] * 60 + parts[1];
+                    } else {
+                        totalDuration += parseNumber(duration);
                     }
                 }
             });
 
-            const avgDuration = totalDuration > 0 ? Math.floor(totalDuration / dataRows.length) : 0;
-            const avgDurationStr = Math.floor(avgDuration / 60) + ':' + (avgDuration % 60).toString().padStart(2, '0');
+            const avgDuration = totalDuration > 0 && dataRows.length > 0 ? Math.floor(totalDuration / dataRows.length) : 0;
+            const avgHours = Math.floor(avgDuration / 3600);
+            const avgMinutes = Math.floor((avgDuration % 3600) / 60);
+            const avgSeconds = avgDuration % 60;
+            const avgDurationStr = avgHours > 0
+                ? `${avgHours}:${avgMinutes.toString().padStart(2, '0')}:${avgSeconds.toString().padStart(2, '0')}`
+                : `${avgMinutes}:${avgSeconds.toString().padStart(2, '0')}`;
             const overallROI = totalConsume > 0 ? (totalRevenue / totalConsume).toFixed(2) : '0';
             const overallCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) + '%' : '0%';
             const avgCPM = totalImpressions > 0 ? ((totalConsume / totalImpressions) * 1000).toFixed(2) : '0';
