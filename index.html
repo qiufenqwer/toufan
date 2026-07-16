@@ -1139,12 +1139,12 @@
                 
                 if (ctrHeader) {
                     const accumulator = row.__rateAccumulators[ctrHeader];
-                    if (impressions > 0 && clicks > 0) {
-                        row[ctrHeader] = formatPercent((clicks / impressions) * 100);
-                    } else if (accumulator && accumulator.weight > 0) {
+                    if (accumulator && accumulator.weight > 0) {
                         row[ctrHeader] = formatPercent(accumulator.weightedValue / accumulator.weight);
+                    } else if (impressions > 0 && clicks > 0) {
+                        row[ctrHeader] = formatPercent((clicks / impressions) * 100);
                     } else {
-                        row[ctrHeader] = impressions > 0 ? '0.00%' : row[ctrHeader] || '0.00%';
+                        row[ctrHeader] = row[ctrHeader] || '0.00%';
                     }
                 }
 
