@@ -954,8 +954,8 @@
             };
             const consumeHeader = findHeader('整体消耗', '消耗');
             const revenueHeader = findHeader('整体成交金额', '成交金额');
-            const clicksHeader = findHeader('整体点击次数', '点击次数');
-            const impressionsHeader = findHeader('整体展示次数', '展示次数');
+            const clicksHeader = findHeader('整体点击次数', '点击次数', '整体点击数', '点击数', '点击量');
+            const impressionsHeader = findHeader('整体展示次数', '展示次数', '整体展示数', '展示数', '展示量', '整体展现次数', '展现次数', '展现量', '曝光次数', '曝光量');
             const plansHeader = findHeader('素材关联的计划数量', '计划数量');
             const merchantsHeader = findHeader('素材关联的商家数量', '商家数量');
             const durationHeader = findHeader('素材时长', '时长');
@@ -1049,9 +1049,9 @@
             const formatPercent = value => `${value.toFixed(2)}%`;
             const consumeHeader = findHeader('整体消耗', '消耗');
             const revenueHeader = findHeader('整体成交金额', '成交金额');
-            const clicksHeader = findHeader('整体点击次数', '点击次数');
-            const impressionsHeader = findHeader('整体展示次数', '展示次数');
-            const conversionCountHeader = findHeader('整体转化次数', '转化次数', '成交次数');
+            const clicksHeader = findHeader('整体点击次数', '点击次数', '整体点击数', '点击数', '点击量');
+            const impressionsHeader = findHeader('整体展示次数', '展示次数', '整体展示数', '展示数', '展示量', '整体展现次数', '展现次数', '展现量', '曝光次数', '曝光量');
+            const conversionCountHeader = findHeader('整体转化次数', '转化次数', '成交次数', '转化量', '成交量');
             const roiHeader = findHeader('整体付费ROI', '付费ROI', 'ROI');
             const ctrHeader = findHeader('整体点击率', '点击率', 'CTR');
             const conversionRateHeader = findHeader('整体转化率', '转化率', 'CVR');
@@ -1132,7 +1132,14 @@
                 }
                 
                 if (ctrHeader) {
-                    row[ctrHeader] = impressions > 0 ? formatPercent((clicks / impressions) * 100) : '0.00%';
+                    const accumulator = row.__rateAccumulators[ctrHeader];
+                    if (impressions > 0) {
+                        row[ctrHeader] = formatPercent((clicks / impressions) * 100);
+                    } else if (accumulator && accumulator.weight > 0) {
+                        row[ctrHeader] = formatPercent(accumulator.weightedValue / accumulator.weight);
+                    } else {
+                        row[ctrHeader] = row[ctrHeader] || '0.00%';
+                    }
                 }
 
                 if (conversionRateHeader) {
