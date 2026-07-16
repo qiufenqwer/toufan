@@ -952,9 +952,18 @@
                 return headers.find(header => normalizedKeywords.includes(normalizeHeader(header))) ||
                     headers.find(header => normalizedKeywords.some(keyword => normalizeHeader(header).includes(keyword)));
             };
+            const findHeaderExcept = (excludedKeywords, ...keywords) => {
+                const excluded = excludedKeywords.map(normalizeHeader);
+                const candidates = headers.filter(header =>
+                    !excluded.some(keyword => normalizeHeader(header).includes(keyword))
+                );
+                const normalizedKeywords = keywords.map(normalizeHeader);
+                return candidates.find(header => normalizedKeywords.includes(normalizeHeader(header))) ||
+                    candidates.find(header => normalizedKeywords.some(keyword => normalizeHeader(header).includes(keyword)));
+            };
             const consumeHeader = findHeader('整体消耗', '消耗');
             const revenueHeader = findHeader('整体成交金额', '成交金额');
-            const clicksHeader = findHeader('整体点击次数', '点击次数', '整体点击数', '点击数', '点击量');
+            const clicksHeader = findHeaderExcept(['点击率', 'CTR'], '整体点击次数', '点击次数', '整体点击数', '点击数', '点击量', '整体点击', '点击');
             const impressionsHeader = findHeader('整体展示次数', '展示次数', '整体展示数', '展示数', '展示量', '整体展现次数', '展现次数', '展现量', '曝光次数', '曝光量');
             const plansHeader = findHeader('素材关联的计划数量', '计划数量');
             const merchantsHeader = findHeader('素材关联的商家数量', '商家数量');
@@ -1059,6 +1068,15 @@
                 return headers.find(header => normalizedKeywords.includes(normalizeHeader(header))) ||
                     headers.find(header => normalizedKeywords.some(keyword => normalizeHeader(header).includes(keyword)));
             };
+            const findHeaderExcept = (excludedKeywords, ...keywords) => {
+                const excluded = excludedKeywords.map(normalizeHeader);
+                const candidates = headers.filter(header =>
+                    !excluded.some(keyword => normalizeHeader(header).includes(keyword))
+                );
+                const normalizedKeywords = keywords.map(normalizeHeader);
+                return candidates.find(header => normalizedKeywords.includes(normalizeHeader(header))) ||
+                    candidates.find(header => normalizedKeywords.some(keyword => normalizeHeader(header).includes(keyword)));
+            };
             const parseNumber = value => {
                 const parsed = Number.parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
                 return Number.isFinite(parsed) ? parsed : 0;
@@ -1072,7 +1090,7 @@
             const formatPercent = value => `${value.toFixed(2)}%`;
             const consumeHeader = findHeader('整体消耗', '消耗');
             const revenueHeader = findHeader('整体成交金额', '成交金额');
-            const clicksHeader = findHeader('整体点击次数', '点击次数', '整体点击数', '点击数', '点击量');
+            const clicksHeader = findHeaderExcept(['点击率', 'CTR'], '整体点击次数', '点击次数', '整体点击数', '点击数', '点击量', '整体点击', '点击');
             const impressionsHeader = findHeader('整体展示次数', '展示次数', '整体展示数', '展示数', '展示量', '整体展现次数', '展现次数', '展现量', '曝光次数', '曝光量');
             const conversionCountHeader = findHeader('整体转化次数', '转化次数', '成交次数', '转化量', '成交量');
             const roiHeader = findHeader('整体付费ROI', '付费ROI', 'ROI');
