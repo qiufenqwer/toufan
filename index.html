@@ -959,9 +959,16 @@
             const plansHeader = findHeader('素材关联的计划数量', '计划数量');
             const merchantsHeader = findHeader('素材关联的商家数量', '商家数量');
             const durationHeader = findHeader('素材时长', '时长');
+            const ctrHeader = findHeader('整体点击率', '点击率', 'CTR');
             const parseNumber = value => {
                 const parsed = Number.parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
                 return Number.isFinite(parsed) ? parsed : 0;
+            };
+            const parsePercent = value => {
+                const text = String(value ?? '').trim();
+                const parsed = parseNumber(text);
+                if (!Number.isFinite(parsed)) return 0;
+                return text.includes('%') ? parsed : parsed > 0 && parsed <= 1 ? parsed * 100 : parsed;
             };
             let totalConsume = 0;
             let totalRevenue = 0;
@@ -970,6 +977,8 @@
             let totalPlans = 0;
             let totalMerchants = 0;
             let totalDuration = 0;
+            let totalCtrWeight = 0;
+            let weightedCtr = 0;
 
             dataRows.forEach(row => {
                 const consume = parseNumber(row[consumeHeader]);
@@ -985,6 +994,12 @@
                 totalImpressions += impressions;
                 totalPlans += plans;
                 totalMerchants += merchants;
+                const ctr = parsePercent(row[ctrHeader]);
+                if (ctr > 0) {
+                    const ctrWeight = impressions > 0 ? impressions : 1;
+                    weightedCtr += ctr * ctrWeight;
+                    totalCtrWeight += ctrWeight;
+                }
 
                 const duration = row[durationHeader];
                 if (duration) {
@@ -1007,7 +1022,9 @@
                 ? `${avgHours}:${avgMinutes.toString().padStart(2, '0')}:${avgSeconds.toString().padStart(2, '0')}`
                 : `${avgMinutes}:${avgSeconds.toString().padStart(2, '0')}`;
             const overallROI = totalConsume > 0 ? (totalRevenue / totalConsume).toFixed(2) : '0';
-            const overallCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) + '%' : '0%';
+            const overallCTR = totalImpressions > 0 && totalClicks > 0
+                ? ((totalClicks / totalImpressions) * 100).toFixed(2) + '%'
+                : totalCtrWeight > 0 ? (weightedCtr / totalCtrWeight).toFixed(2) + '%' : '0.00%';
             const avgCPM = totalImpressions > 0 ? ((totalConsume / totalImpressions) * 1000).toFixed(2) : '0';
 
             allData["核心指标汇总"] = [
