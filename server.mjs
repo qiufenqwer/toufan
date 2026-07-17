@@ -53,6 +53,9 @@ function getSupabaseConfiguration() {
   const projectUrl = requireEnvironment('SUPABASE_URL').replace(/\/$/, '');
   const secretKey = requireEnvironment('SUPABASE_SECRET_KEY');
   const table = process.env.SUPABASE_TABLE || 'app_state';
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(projectUrl)) {
+    throw new Error('SUPABASE_URL 格式错误，应类似 https://xxxx.supabase.co');
+  }
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
     throw new Error('SUPABASE_TABLE 格式无效');
   }
@@ -62,10 +65,27 @@ function getSupabaseConfiguration() {
   };
 }
 
+async function fetchSupabaseJson(url, options) {
+  let supabaseHost = 'unknown';
+  try {
+    supabaseHost = new URL(url).host;
+    const response = await fetch(url, options);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.message || result.hint || `Supabase 接口返回 ${response.status}`);
+    }
+    return result;
+  } catch (error) {
+    if (error.message?.startsWith('Supabase 接口返回')) throw error;
+    const cause = error.cause?.code || error.cause?.message || error.message;
+    throw new Error(`无法连接 Supabase（${supabaseHost}）：${cause}`);
+  }
+}
+
 async function requestSupabase(method, payload) {
   const { endpoint, secretKey } = getSupabaseConfiguration();
   const isRead = method === 'GET';
-  const response = await fetch(endpoint, {
+  const result = await fetchSupabaseJson(endpoint, {
     method,
     headers: {
       'content-type': 'application/json',
@@ -79,10 +99,6 @@ async function requestSupabase(method, payload) {
       updated_at: new Date().toISOString()
     })
   });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(result.message || result.hint || `Supabase 接口返回 ${response.status}`);
-  }
   if (isRead) {
     const row = Array.isArray(result) ? result[0] : null;
     return { data: row?.data || null, updatedAt: row?.updated_at || null };
@@ -94,7 +110,7 @@ async function handleApi(request, response) {
   try {
     if (request.method === 'GET') {
       const { endpoint, secretKey } = getSupabaseConfiguration();
-      const responseFromSupabase = await fetch(
+      const rows = await fetchSupabaseJson(
         `${endpoint}?id=eq.default&select=data,updated_at&limit=1`,
         {
           headers: {
@@ -103,10 +119,6 @@ async function handleApi(request, response) {
           }
         }
       );
-      const rows = await responseFromSupabase.json().catch(() => []);
-      if (!responseFromSupabase.ok) {
-        throw new Error(rows.message || `Supabase 接口返回 ${responseFromSupabase.status}`);
-      }
       const row = rows[0];
       sendJson(response, 200, {
         data: row?.data || null,
