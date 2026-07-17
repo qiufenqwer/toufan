@@ -2451,25 +2451,36 @@
             if (displayData && displayData.length > 1) {
                 const headers = Object.keys(displayData[0]);
                 const normalizeHeader = value => value.toString().trim().toLowerCase();
-                const materialNameHeader = headers.find(header => {
-                    const normalized = normalizeHeader(header);
-                    return ['素材名称', '视频名称', '创意名称', '广告名称', '名称', 'name', 'title'].some(keyword =>
-                        normalized === normalizeHeader(keyword)
-                    );
-                }) || headers.find(header => {
-                    const normalized = normalizeHeader(header);
-                    return ['名称', 'name', 'title'].some(keyword => normalized.includes(normalizeHeader(keyword))) &&
-                        !['id', '编号', '序号'].some(keyword => normalized.includes(normalizeHeader(keyword)));
-                }) || headers.find(header => {
-                    const normalized = normalizeHeader(header);
-                    return normalized.includes('素材') &&
-                        !['id', '编号', '序号'].some(keyword => normalized.includes(normalizeHeader(keyword)));
-                });
+                const isIdLikeHeader = header => ['id', '编号', '序号'].some(keyword =>
+                    normalizeHeader(header).includes(normalizeHeader(keyword))
+                );
+                const isIdLikeValue = value => /^\d{10,}$/.test(String(value ?? '').trim());
+                const hasNameKeyword = header => ['名称', '名字', '标题', 'name', 'title'].some(keyword =>
+                    normalizeHeader(header).includes(normalizeHeader(keyword))
+                );
+                const preferredNameHeaders = headers.filter(header =>
+                    hasNameKeyword(header) && !isIdLikeHeader(header)
+                );
+                const fallbackTextHeaders = headers.filter(header =>
+                    !isIdLikeHeader(header) &&
+                    !['roi', '消耗', '成交', '点击', '展示', '展现', '曝光', '率', '次数', '数量', '费用', '金额'].some(keyword =>
+                        normalizeHeader(header).includes(normalizeHeader(keyword))
+                    )
+                );
+                const getMaterialLabel = row => {
+                    const candidateHeaders = [...preferredNameHeaders, ...fallbackTextHeaders];
+                    for (const header of candidateHeaders) {
+                        const value = row[header];
+                        if (value && !isIdLikeValue(value)) return String(value);
+                    }
+                    const idHeader = headers.find(header => isIdLikeHeader(header));
+                    return idHeader ? String(row[idHeader] || '') : '';
+                };
                 const roiIndex = headers.findIndex(h => h.includes('ROI') || h.includes('付费ROI'));
                 
-                if (materialNameHeader && roiIndex !== -1) {
+                if (roiIndex !== -1) {
                     displayData.slice(1).forEach(row => {
-                        const materialName = row[materialNameHeader];
+                        const materialName = getMaterialLabel(row);
                         const roiValue = parseFloat(row[headers[roiIndex]]?.toString().replace(/[^\d.]/g, '') || '0');
                         if (materialName && !isNaN(roiValue)) {
                             roiData.push({ name: materialName, roi: roiValue });
