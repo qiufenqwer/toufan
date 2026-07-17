@@ -1384,6 +1384,8 @@
             document.getElementById('uploadPreview').style.display = 'none';
             document.getElementById('confirmUpload').disabled = true;
             document.getElementById('previewTable').innerHTML = '';
+            document.getElementById('uploadDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('appendData').checked = true;
             // 设置默认目标数据表为当前表
             document.getElementById('targetSheet').value = currentSheet;
             // 显示模态框
