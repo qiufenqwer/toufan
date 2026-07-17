@@ -2450,12 +2450,26 @@
             
             if (displayData && displayData.length > 1) {
                 const headers = Object.keys(displayData[0]);
-                const materialNameIndex = headers.findIndex(h => h.includes('素材名称') || h.includes('素材'));
+                const normalizeHeader = value => value.toString().trim().toLowerCase();
+                const materialNameHeader = headers.find(header => {
+                    const normalized = normalizeHeader(header);
+                    return ['素材名称', '视频名称', '创意名称', '广告名称', '名称', 'name', 'title'].some(keyword =>
+                        normalized === normalizeHeader(keyword)
+                    );
+                }) || headers.find(header => {
+                    const normalized = normalizeHeader(header);
+                    return ['名称', 'name', 'title'].some(keyword => normalized.includes(normalizeHeader(keyword))) &&
+                        !['id', '编号', '序号'].some(keyword => normalized.includes(normalizeHeader(keyword)));
+                }) || headers.find(header => {
+                    const normalized = normalizeHeader(header);
+                    return normalized.includes('素材') &&
+                        !['id', '编号', '序号'].some(keyword => normalized.includes(normalizeHeader(keyword)));
+                });
                 const roiIndex = headers.findIndex(h => h.includes('ROI') || h.includes('付费ROI'));
                 
-                if (materialNameIndex !== -1 && roiIndex !== -1) {
+                if (materialNameHeader && roiIndex !== -1) {
                     displayData.slice(1).forEach(row => {
-                        const materialName = row[headers[materialNameIndex]];
+                        const materialName = row[materialNameHeader];
                         const roiValue = parseFloat(row[headers[roiIndex]]?.toString().replace(/[^\d.]/g, '') || '0');
                         if (materialName && !isNaN(roiValue)) {
                             roiData.push({ name: materialName, roi: roiValue });
