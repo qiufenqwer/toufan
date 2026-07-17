@@ -909,13 +909,38 @@
             const response = await fetch('/api/data');
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || '读取失败');
-            const cloudData = result.data || result;
-            if (!cloudData || typeof cloudData !== 'object') {
-                throw new Error('云端数据格式无效');
+            const cloudData = result.data && Object.keys(result.data).length > 0 ? result.data :
+                result["原始数据"] ? result : null;
+            if (!cloudData || typeof cloudData !== 'object' || !cloudData["原始数据"]) {
+                return false;
             }
             Object.keys(allData).forEach(key => delete allData[key]);
             Object.assign(allData, cloudData);
             localStorage.setItem('materialAnalysisData', JSON.stringify(allData));
+            return true;
+        }
+
+        async function hydrateDataFromCloudOnStart() {
+            if (location.protocol === 'file:') {
+                setCloudSyncStatus('请通过后端地址打开网页', true);
+                return;
+            }
+            setCloudSyncStatus('正在读取…');
+            try {
+                const hasCloudData = await loadDataFromCloud();
+                if (!hasCloudData) {
+                    setCloudSyncStatus('云端暂无数据');
+                    return;
+                }
+                updateAllSheets();
+                currentPage = 1;
+                loadSheetData(currentSheet);
+                document.getElementById('lastUpdateTime').textContent = new Date().toLocaleString();
+                setCloudSyncStatus('已读取');
+            } catch (error) {
+                console.error('启动读取云端失败:', error);
+                setCloudSyncStatus(error.message, true);
+            }
         }
 
         function initData() {
@@ -933,6 +958,7 @@
             bindEvents();
             // 加载默认页面
             loadSheetData(currentSheet);
+            hydrateDataFromCloudOnStart();
         }
 
         // 根据原始数据计算核心指标汇总
@@ -2545,7 +2571,10 @@
                 if (location.protocol === 'file:') {
                     throw new Error('请使用 npm start 后通过 http://localhost:3000 打开');
                 }
-                await loadDataFromCloud();
+                const hasCloudData = await loadDataFromCloud();
+                if (!hasCloudData) {
+                    throw new Error('云端暂无数据');
+                }
                 document.getElementById('lastUpdateTime').textContent = new Date().toLocaleString();
                 updateAllSheets();
                 loadSheetData(currentSheet);
