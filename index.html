@@ -527,6 +527,10 @@
             background-color: #d4edda;
             color: #155724;
         }
+        .status-excellent {
+            background-color: #cfe2ff;
+            color: #084298;
+        }
         .status-warning {
             background-color: #fff3cd;
             color: #856404;
@@ -2112,11 +2116,20 @@
                 const value = Object.values(kpi)[1];
                 // 状态判断
                 let statusClass = "status-success";
-                if (label.includes("ROI") && parseFloat(value) < 1) {
-                    statusClass = "status-warning";
+                let statusText = "正常";
+                if (label.includes("ROI")) {
+                    const roiValue = parseFloat(value);
+                    if (roiValue < 2) {
+                        statusClass = "status-warning";
+                        statusText = "偏低";
+                    } else if (roiValue > 3) {
+                        statusClass = "status-excellent";
+                        statusText = "优秀";
+                    }
                 }
                 if (label.includes("消耗") && parseFloat(value) > 1000) {
                     statusClass = "status-danger";
+                    statusText = "风险较高";
                 }
 
                 const column = document.createElement('div');
@@ -2135,8 +2148,7 @@
                 statusWrapper.className = 'mt-2';
                 const status = document.createElement('span');
                 status.className = `status-badge ${statusClass}`;
-                status.textContent = statusClass === 'status-warning' ? '需要关注' :
-                    statusClass === 'status-danger' ? '风险较高' : '正常';
+                status.textContent = statusText;
                 statusWrapper.appendChild(status);
                 body.append(title, metric, statusWrapper);
                 card.appendChild(body);
