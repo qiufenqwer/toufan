@@ -2557,26 +2557,74 @@
                 }
             });
 
-            // 子图表：核心指标对比
+            // 子图表：产品销售占比
             const ctx2 = document.getElementById('subChart').getContext('2d');
-            const labels = [];
-            const values = [];
-            data.forEach(item => {
-                const label = Object.values(item)[0];
-                const value = parseFloat(Object.values(item)[1]);
-                if (label && !isNaN(value)) {
-                    labels.push(label);
-                    values.push(value);
-                }
+            const productSales = new Map();
+            const salesPalette = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6', '#1abc9c', '#34495e', '#e67e22', '#16a085', '#8e44ad'];
+            const parseSalesAmount = value => {
+                if (value === null || value === undefined) return 0;
+                const text = String(value).replace(/,/g, '').replace(/[￥¥\s]/g, '').trim();
+                const matched = text.match(/-?\d+(?:\.\d+)?/);
+                return matched ? Number(matched[0]) : 0;
+            };
+            const extractProductName = materialName => {
+                const name = String(materialName || '').trim();
+                const markerIndex = name.indexOf('混剪');
+                if (markerIndex === -1) return '未识别产品';
+                const suffix = name
+                    .slice(markerIndex + 2)
+                    .replace(/^[\s_\-—–|｜:：、，,]+/, '')
+                    .trim();
+                if (!suffix) return '未识别产品';
+                const parts = suffix.split(/[\s_\-—–|｜:：、，,]+/).filter(Boolean);
+                return parts[0] || suffix || '未识别产品';
+            };
+            const findProductChartHeader = (headers, keywords, excludeKeywords = []) => headers.find(header => {
+                const normalizedHeader = String(header).trim().toLowerCase();
+                return keywords.some(keyword => normalizedHeader.includes(String(keyword).toLowerCase())) &&
+                    !excludeKeywords.some(keyword => normalizedHeader.includes(String(keyword).toLowerCase()));
             });
+
+            if (displayData && displayData.length > 1) {
+                const productHeaders = Object.keys(displayData[0]);
+                const materialNameHeader = findProductChartHeader(
+                    productHeaders,
+                    ['素材名称', '视频名称', '创意名称', '广告名称', '名称', 'name', 'title'],
+                    ['id', '编号', '序号']
+                );
+                const salesAmountHeader = findProductChartHeader(
+                    productHeaders,
+                    ['整体成交金额', '成交金额', '销售额', '销售金额', 'gmv', '收入', '营收'],
+                    ['roi', '率', '次数', '数量']
+                );
+
+                if (materialNameHeader && salesAmountHeader) {
+                    displayData.slice(1).forEach(row => {
+                        const productName = extractProductName(row[materialNameHeader]);
+                        const salesAmount = parseSalesAmount(row[salesAmountHeader]);
+                        if (salesAmount > 0) {
+                            productSales.set(productName, (productSales.get(productName) || 0) + salesAmount);
+                        }
+                    });
+                }
+            }
+
+            const allProductSalesData = Array.from(productSales, ([name, value]) => ({ name, value }))
+                .sort((a, b) => b.value - a.value);
+            const totalProductSales = allProductSalesData.reduce((sum, item) => sum + item.value, 0);
+            const productSalesData = allProductSalesData.slice(0, 10);
+            const hasProductSalesData = productSalesData.length > 0;
+            const labels = hasProductSalesData ? productSalesData.map(item => item.name) : ['暂无产品销售数据'];
+            const values = hasProductSalesData ? productSalesData.map(item => item.value) : [1];
 
             window.subChartInstance = new Chart(ctx2, {
                 type: 'doughnut',
                 data: {
                     labels: labels,
                     datasets: [{
+                        label: '产品销售占比',
                         data: values,
-                        backgroundColor: ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6', '#e74c3c', '#34495e', '#1abc9c'],
+                        backgroundColor: hasProductSalesData ? salesPalette : ['#dee2e6'],
                         borderWidth: 2,
                         borderColor: '#fff'
                     }]
@@ -2585,13 +2633,20 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
+                        title: {
+                            display: true,
+                            text: '产品销售占比'
+                        },
                         legend: {
                             position: 'right'
                         },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return context.label + ': ' + context.raw;
+                                    if (!hasProductSalesData) return '暂无产品销售数据';
+                                    const salesValue = Number(context.raw || 0);
+                                    const percent = totalProductSales > 0 ? ((salesValue / totalProductSales) * 100).toFixed(2) : '0.00';
+                                    return `${context.label}: ¥${salesValue.toFixed(2)} (${percent}%)`;
                                 }
                             }
                         }
