@@ -2530,13 +2530,21 @@
                     return idHeader ? String(row[idHeader] || '') : '';
                 };
                 const roiIndex = headers.findIndex(h => h.includes('ROI') || h.includes('付费ROI'));
+                const consumeIndex = headers.findIndex(h => h.includes('整体消耗') || h.includes('消耗'));
                 
                 if (roiIndex !== -1) {
                     displayData.slice(1).forEach(row => {
                         const materialName = getMaterialLabel(row);
                         const roiValue = parseFloat(row[headers[roiIndex]]?.toString().replace(/[^\d.]/g, '') || '0');
+                        const consumeValue = consumeIndex !== -1
+                            ? parseFloat(row[headers[consumeIndex]]?.toString().replace(/[^\d.-]/g, '') || '0')
+                            : 0;
                         if (materialName && !isNaN(roiValue)) {
-                            roiData.push({ name: materialName, roi: roiValue });
+                            roiData.push({
+                                name: materialName,
+                                roi: roiValue,
+                                consume: Number.isFinite(consumeValue) ? consumeValue : 0
+                            });
                         }
                     });
                 }
@@ -2549,6 +2557,7 @@
             const topRoiData = roiData.slice(0, 10);
             const materialNames = topRoiData.map(item => item.name);
             const roiValues = topRoiData.map(item => item.roi);
+            const consumeValues = topRoiData.map(item => item.consume);
 
             window.mainChartInstance = new Chart(ctx1, {
                 type: 'bar',
@@ -2574,7 +2583,11 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return 'ROI: ' + context.raw;
+                                    const consume = consumeValues[context.dataIndex] || 0;
+                                    return [
+                                        'ROI: ' + context.raw,
+                                        '整体消耗: ¥' + consume.toFixed(2)
+                                    ];
                                 }
                             }
                         }
