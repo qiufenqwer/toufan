@@ -2569,10 +2569,14 @@
             };
             const extractProductName = materialName => {
                 const name = String(materialName || '').trim();
-                const markerIndex = name.indexOf('混剪');
-                if (markerIndex === -1) return '未识别产品';
+                const markers = ['混剪', '切片'];
+                const marker = markers
+                    .map(keyword => ({ keyword, index: name.indexOf(keyword) }))
+                    .filter(item => item.index !== -1)
+                    .sort((a, b) => a.index - b.index)[0];
+                if (!marker) return '未识别产品';
                 const suffix = name
-                    .slice(markerIndex + 2)
+                    .slice(marker.index + marker.keyword.length)
                     .replace(/^[\s_\-—–|｜:：、，,]+/, '')
                     .trim();
                 if (!suffix) return '未识别产品';
