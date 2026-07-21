@@ -966,8 +966,8 @@
         }
 
         // 根据原始数据计算核心指标汇总
-        function calculateCoreMetrics() {
-            const rawData = allData["原始数据"];
+        function calculateCoreMetrics(rawDataOverride = null) {
+            const rawData = rawDataOverride || allData["原始数据"];
             if (!rawData || rawData.length <= 1) {
                 allData["核心指标汇总"] = [{"指标名称":"指标名称","指标值":"指标值"}];
                 return;
@@ -1080,6 +1080,39 @@
                 {"指标名称":"平均千次展示费用(元)","指标值":"¥" + avgCPM},
                 {"指标名称":"平均素材时长","指标值":avgDurationStr}
             ];
+        }
+
+        function getSummarySourceRawData() {
+            return window.filteredRawData && window.filteredRawData.length > 1
+                ? window.filteredRawData
+                : allData["原始数据"];
+        }
+
+        function filterRawDataBySearch(data, searchText) {
+            if (!data || data.length <= 1 || !searchText) return data;
+            const headers = Object.keys(data[0]);
+            const filteredRows = data.slice(1).filter(row =>
+                headers.some(header =>
+                    row[header] !== null &&
+                    row[header] !== undefined &&
+                    row[header].toString().toLocaleLowerCase('zh-CN').includes(searchText)
+                )
+            );
+            return [data[0], ...filteredRows];
+        }
+
+        function refreshCoreSummaryFromSearch() {
+            if (currentSheet !== "核心指标汇总") return;
+            const searchInput = document.getElementById('searchInput');
+            const searchText = searchInput ? searchInput.value.trim().toLocaleLowerCase('zh-CN') : '';
+            const sourceRawData = getSummarySourceRawData();
+            const searchedRawData = filterRawDataBySearch(sourceRawData, searchText);
+            window.summarySearchedRawData = searchedRawData;
+            calculateCoreMetrics(searchedRawData);
+            const summaryData = allData["核心指标汇总"];
+            renderKPICards(summaryData);
+            document.getElementById('chartCard').style.display = 'block';
+            renderCharts(summaryData);
         }
         // 合并相同素材ID的数据
         function mergeDataByMaterialId(data) {
@@ -1277,6 +1310,7 @@
             // 搜索输入
             document.getElementById('searchInput').addEventListener('input', function() {
                 currentPage = 1;
+                refreshCoreSummaryFromSearch();
                 renderTable();
             });
 
@@ -2080,7 +2114,7 @@
             document.getElementById('tableBody').innerHTML = '';
             document.getElementById('pagination').innerHTML = '';
             
-            const data = allData[sheetName];
+            let data = allData[sheetName];
             if (!data || data.length === 0) {
                 document.getElementById('chartCard').style.display = 'none';
                 const tableBody = document.getElementById('tableBody');
@@ -2090,6 +2124,8 @@
 
             // 核心指标汇总页面特殊处理
             if (sheetName === "核心指标汇总") {
+                refreshCoreSummaryFromSearch();
+                data = allData[sheetName];
                 renderKPICards(data);
                 document.getElementById('chartCard').style.display = 'block';
                 renderCharts(data);
@@ -2188,7 +2224,7 @@
 
             // 搜索过滤
             const searchText = document.getElementById('searchInput').value.trim().toLocaleLowerCase('zh-CN');
-            if (searchText) {
+            if (searchText && currentSheet !== "核心指标汇总") {
                 visibleRows = visibleRows.filter(item => {
                     return Object.values(item).some(val => 
                         val && val.toString().toLocaleLowerCase('zh-CN').includes(searchText)
@@ -2457,6 +2493,9 @@
             let displayData = allData["原始数据"];
             if (window.filteredRawData && window.filteredRawData.length > 1) {
                 displayData = window.filteredRawData;
+            }
+            if (currentSheet === "核心指标汇总" && window.summarySearchedRawData && window.summarySearchedRawData.length > 0) {
+                displayData = window.summarySearchedRawData;
             }
             displayData = mergeDataByMaterialId(displayData);
             
