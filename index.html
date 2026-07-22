@@ -1125,6 +1125,21 @@
             document.getElementById('chartCard').style.display = 'block';
             renderCharts(summaryData);
         }
+
+        function formatCellValue(value) {
+            if (value === null || value === undefined) return '';
+            const text = String(value).trim();
+            if (!text) return '';
+            if (/^-?\d+(?:\.\d+)?%$/.test(text)) {
+                const percentValue = Number.parseFloat(text.replace('%', ''));
+                return Number.isFinite(percentValue) ? `${percentValue.toFixed(2)}%` : text;
+            }
+            if (!/^-?\d+(?:\.\d+)?$/.test(text)) return text;
+            if (/^0\d+/.test(text.replace('-', ''))) return text;
+            const numberValue = Number.parseFloat(text);
+            if (!Number.isFinite(numberValue)) return text;
+            return Number.isInteger(numberValue) ? text : numberValue.toFixed(2);
+        }
         // 合并相同素材ID的数据
         function mergeDataByMaterialId(data) {
             if (!data || data.length <= 1) return data;
@@ -1662,7 +1677,7 @@
                 const tr = document.createElement('tr');
                 headers.forEach(header => {
                     const td = document.createElement('td');
-                    td.textContent = row[header] || '';
+                    td.textContent = formatCellValue(row[header]);
                     tr.appendChild(td);
                 });
                 previewTable.appendChild(tr);
@@ -2263,7 +2278,7 @@
                 const tr = document.createElement('tr');
                 headers.forEach(header => {
                     const td = document.createElement('td');
-                    td.textContent = row[header] || '';
+                    td.textContent = formatCellValue(row[header]);
                     tr.appendChild(td);
                 });
                 
