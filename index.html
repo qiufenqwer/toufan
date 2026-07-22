@@ -86,7 +86,7 @@
             border-collapse: separate;
             border-spacing: 0;
             border-radius: 8px;
-            overflow: hidden;
+            overflow: visible;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
         }
 
@@ -94,7 +94,13 @@
         #dataTable thead {
             position: sticky;
             top: 0;
-            z-index: 100;
+            z-index: 200;
+        }
+
+        #dataTable thead tr {
+            position: sticky;
+            top: 0;
+            z-index: 200;
         }
 
         #dataTable thead th {
@@ -110,7 +116,7 @@
             white-space: nowrap;
             position: sticky;
             top: 0;
-            z-index: 20;
+            z-index: 201;
             background-clip: padding-box;
             box-shadow: 0 2px 6px rgba(44, 62, 80, 0.12);
         }
