@@ -108,7 +108,11 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
             white-space: nowrap;
-            position: relative;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            background-clip: padding-box;
+            box-shadow: 0 2px 6px rgba(44, 62, 80, 0.12);
         }
 
         #dataTable thead th:first-child {
@@ -234,6 +238,7 @@
             max-height: calc(100vh - 350px);
             overflow-y: auto;
             overflow-x: auto;
+            position: relative;
         }
 
         /* 表格内部滚动条样式 */
