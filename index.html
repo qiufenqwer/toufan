@@ -1179,6 +1179,11 @@
                 return text.includes('%') ? parsed : parsed > 0 && parsed <= 1 ? parsed * 100 : parsed;
             };
             const formatPercent = value => `${value.toFixed(2)}%`;
+            const formatMergedNumber = value => {
+                const numericValue = parseNumber(value);
+                if (!Number.isFinite(numericValue)) return value;
+                return Number.isInteger(numericValue) ? numericValue : Number(numericValue.toFixed(2));
+            };
             const consumeHeader = findHeader('整体消耗', '消耗');
             const revenueHeader = findHeader('整体成交金额', '成交金额');
             const clicksHeader = findHeaderExcept(['点击率', 'CTR'], '整体点击次数', '点击次数', '整体点击数', '点击数', '点击量', '整体点击', '点击');
@@ -1289,6 +1294,10 @@
                         row[conversionRateHeader] = '0.00%';
                     }
                 }
+
+                additiveHeaders.forEach(header => {
+                    row[header] = formatMergedNumber(row[header]);
+                });
                 
                 mergedData.push(row);
             });
