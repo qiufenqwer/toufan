@@ -1314,7 +1314,12 @@
                 window.subChartInstance = null;
             }
 
-            const { rows, totals } = buildDepartmentMetrics(data);
+            let chartData = data;
+            if (data && data.length > 1) {
+                const headers = Object.keys(data[0]);
+                chartData = [data[0], ...getCurrentWeekDepartmentRows(data, headers)];
+            }
+            const { rows, totals } = buildDepartmentMetrics(chartData);
             const summaryData = [
                 {"指标名称":"指标名称","指标值":"指标值"},
                 {"指标名称":"部门数量","指标值":`${totals.departments}个`},
@@ -1594,6 +1599,7 @@
                 if (dateInput && !dateInput.value) {
                     dateInput.value = new Date().toISOString().split('T')[0];
                 }
+                updateDepartmentWeekInfo();
             }
         }
 
@@ -1639,6 +1645,105 @@
             loadSheetData("部门人效进度");
             document.getElementById('departmentEntryForm').reset();
             document.getElementById('departmentDateInput').value = new Date().toISOString().split('T')[0];
+        }
+
+        function formatDateValue(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function parseLocalDate(value) {
+            const text = String(value || '').trim();
+            if (!text) return null;
+            const matched = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+            if (matched) {
+                return new Date(Number(matched[1]), Number(matched[2]) - 1, Number(matched[3]));
+            }
+            const parsed = new Date(text);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        function getCurrentWeekRange() {
+            const today = new Date();
+            const day = today.getDay() || 7;
+            const start = new Date(today);
+            start.setHours(0, 0, 0, 0);
+            start.setDate(today.getDate() - day + 1);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 6);
+            end.setHours(23, 59, 59, 999);
+            return { start, end };
+        }
+
+        function isInCurrentWeek(value) {
+            const date = parseLocalDate(value);
+            if (!date) return false;
+            const { start, end } = getCurrentWeekRange();
+            return date >= start && date <= end;
+        }
+
+        function getDepartmentDateHeader(headers) {
+            return findMetricHeader(headers, ['日期', '时间', 'date', '上传日期']);
+        }
+
+        function sortDepartmentRowsByWeekday(rows, headers) {
+            const dateHeader = getDepartmentDateHeader(headers);
+            return [...rows].sort((a, b) => {
+                const dateA = parseLocalDate(a[dateHeader]);
+                const dateB = parseLocalDate(b[dateHeader]);
+                const timeA = dateA ? dateA.getTime() : Number.MAX_SAFE_INTEGER;
+                const timeB = dateB ? dateB.getTime() : Number.MAX_SAFE_INTEGER;
+                if (timeA !== timeB) return timeA - timeB;
+                return String(a["部门"] || '').localeCompare(String(b["部门"] || ''), 'zh-CN');
+            });
+        }
+
+        function getCurrentWeekDepartmentRows(data, headers) {
+            if (currentSheet !== "部门人效进度") return data.slice(1);
+            const dateHeader = getDepartmentDateHeader(headers);
+            const rows = data.slice(1);
+            const filteredRows = dateHeader ? rows.filter(row => isInCurrentWeek(row[dateHeader])) : rows;
+            return sortDepartmentRowsByWeekday(filteredRows, headers);
+        }
+
+        function updateDepartmentWeekInfo() {
+            if (currentSheet !== "部门人效进度") return;
+            const { start, end } = getCurrentWeekRange();
+            document.getElementById('currentFilterInfo').textContent = `当前周：${formatDateValue(start)} 至 ${formatDateValue(end)}`;
+        }
+
+        function recalculateDepartmentRow(row) {
+            const people = parseMetricNumber(row["人数"]);
+            const actual = parseMetricNumber(row["实际业绩"]);
+            const target = parseMetricNumber(row["目标业绩"]);
+            row["完成率"] = target > 0 ? `${((actual / target) * 100).toFixed(2)}%` : '0.00%';
+            row["人效产出"] = people > 0 ? (actual / people).toFixed(2) : '0.00';
+        }
+
+        function updateDepartmentCell(row, header, value) {
+            row[header] = value;
+            if (["人数", "实际业绩", "目标业绩"].includes(header)) {
+                recalculateDepartmentRow(row);
+            }
+            saveDataToStorage();
+            currentPage = 1;
+            loadSheetData("部门人效进度");
+        }
+
+        function deleteDepartmentRow(row) {
+            if (!confirm('确定要删除这条成员数据吗？')) return;
+            const departmentData = ensureDepartmentDataTable();
+            const rowIndex = departmentData.indexOf(row);
+            if (rowIndex <= 0) {
+                alert('未找到对应数据，请刷新页面后重试。');
+                return;
+            }
+            departmentData.splice(rowIndex, 1);
+            saveDataToStorage();
+            currentPage = 1;
+            loadSheetData("部门人效进度");
         }
 
         // 绑定事件
@@ -2617,7 +2722,9 @@
             const headers = Object.keys(data[0]);
             
             // 数据排序（排除表头行）
-            let visibleRows = data.slice(1);
+            let visibleRows = currentSheet === "部门人效进度"
+                ? getCurrentWeekDepartmentRows(data, headers)
+                : data.slice(1);
             if (sortField) {
                 visibleRows = performSorting(visibleRows, sortField, sortOrder);
             }
@@ -2652,7 +2759,21 @@
                 const tr = document.createElement('tr');
                 headers.forEach(header => {
                     const td = document.createElement('td');
-                    td.textContent = formatCellValue(row[header]);
+                    if (currentSheet === "部门人效进度") {
+                        const input = document.createElement('input');
+                        input.className = 'form-control form-control-sm';
+                        input.value = row[header] ?? '';
+                        input.type = header.includes('日期') ? 'date' :
+                            ['人数', '实际业绩', '目标业绩', '人效产出'].includes(header) ? 'number' : 'text';
+                        if (input.type === 'number') {
+                            input.step = header === '人数' ? '1' : '0.01';
+                            input.min = '0';
+                        }
+                        input.addEventListener('change', () => updateDepartmentCell(row, header, input.value));
+                        td.appendChild(input);
+                    } else {
+                        td.textContent = formatCellValue(row[header]);
+                    }
                     tr.appendChild(td);
                 });
                 
@@ -2669,15 +2790,29 @@
                     deleteTd.appendChild(deleteBtn);
                     tr.appendChild(deleteTd);
                 }
+                if (currentSheet === "部门人效进度") {
+                    const deleteTd = document.createElement('td');
+                    deleteTd.style.whiteSpace = 'nowrap';
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn btn-sm btn-danger';
+                    deleteBtn.textContent = '删除';
+                    deleteBtn.type = 'button';
+                    deleteBtn.setAttribute('aria-label', '删除该条成员数据');
+                    deleteBtn.addEventListener('click', () => deleteDepartmentRow(row));
+                    deleteTd.appendChild(deleteBtn);
+                    tr.appendChild(deleteTd);
+                }
                 
                 fragment.appendChild(tr);
             });
             if (pageData.length === 0) {
                 const emptyRow = document.createElement('tr');
                 const emptyCell = document.createElement('td');
-                emptyCell.colSpan = headers.length + (currentSheet === "原始数据" ? 1 : 0);
+                emptyCell.colSpan = headers.length + (["原始数据", "部门人效进度"].includes(currentSheet) ? 1 : 0);
                 emptyCell.className = 'text-center text-muted py-4';
-                emptyCell.textContent = searchText ? '没有匹配的结果' : '暂无数据';
+                emptyCell.textContent = currentSheet === "部门人效进度"
+                    ? '当前周暂无成员数据'
+                    : searchText ? '没有匹配的结果' : '暂无数据';
                 emptyRow.appendChild(emptyCell);
                 fragment.appendChild(emptyRow);
             }
@@ -2747,8 +2882,8 @@
                 headerRow.appendChild(th);
             });
             
-            // 在原始数据页面添加"操作"列
-            if (currentSheet === "原始数据") {
+            // 在可操作页面添加"操作"列
+            if (["原始数据", "部门人效进度"].includes(currentSheet)) {
                 const actionTh = document.createElement('th');
                 actionTh.className = 'sortable-header';
                 actionTh.textContent = '操作';
