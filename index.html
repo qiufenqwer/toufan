@@ -737,6 +737,47 @@
         <div id="contentArea">
             <!-- 核心指标汇总卡片 -->
             <div class="row" id="kpiCards"></div>
+
+            <!-- 部门人效进度手动填写 -->
+            <div class="content-card" id="departmentEntryCard" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h5 class="mb-1">在线手动填写数据</h5>
+                        <small class="text-muted">填写后会立即更新部门人效产出和业绩进度完成情况</small>
+                    </div>
+                </div>
+                <form id="departmentEntryForm" class="row g-3">
+                    <div class="col-md-2">
+                        <label class="form-label" for="departmentNameInput">部门/小组</label>
+                        <input type="text" class="form-control" id="departmentNameInput" placeholder="如：内容部" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="departmentPersonInput">人员</label>
+                        <input type="text" class="form-control" id="departmentPersonInput" placeholder="姓名/负责人">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label" for="departmentPeopleInput">人数</label>
+                        <input type="number" min="0" step="1" class="form-control" id="departmentPeopleInput" placeholder="1">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="departmentActualInput">实际业绩</label>
+                        <input type="number" min="0" step="0.01" class="form-control" id="departmentActualInput" placeholder="0.00" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="departmentTargetInput">目标业绩</label>
+                        <input type="number" min="0" step="0.01" class="form-control" id="departmentTargetInput" placeholder="0.00" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="departmentDateInput">日期</label>
+                        <input type="date" class="form-control" id="departmentDateInput">
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-plus"></i> 添加
+                        </button>
+                    </div>
+                </form>
+            </div>
             
             <!-- 表格数据区域 -->
             <div class="content-card">
@@ -778,7 +819,6 @@
                                 <select class="form-select" id="targetSheet">
                                     <option value="核心指标汇总">核心指标汇总</option>
                                     <option value="原始数据">原始数据</option>
-                                    <option value="部门人效进度">部门人效进度</option>
                                     
                                 </select>
                             </div>
@@ -1545,6 +1585,62 @@
             calculateCoreMetrics();
         }
 
+        function updatePageActionVisibility() {
+            const isDepartmentPage = currentSheet === "部门人效进度";
+            document.getElementById('editBtn').style.display = isDepartmentPage ? 'none' : '';
+            document.getElementById('departmentEntryCard').style.display = isDepartmentPage ? 'block' : 'none';
+            if (isDepartmentPage) {
+                const dateInput = document.getElementById('departmentDateInput');
+                if (dateInput && !dateInput.value) {
+                    dateInput.value = new Date().toISOString().split('T')[0];
+                }
+            }
+        }
+
+        function ensureDepartmentDataTable() {
+            if (!allData["部门人效进度"] || allData["部门人效进度"].length === 0) {
+                allData["部门人效进度"] = [{"部门":"部门","人员":"人员","人数":"人数","实际业绩":"实际业绩","目标业绩":"目标业绩","完成率":"完成率","人效产出":"人效产出","日期":"日期"}];
+            }
+            return allData["部门人效进度"];
+        }
+
+        function addDepartmentEntry(event) {
+            event.preventDefault();
+            const department = document.getElementById('departmentNameInput').value.trim();
+            const person = document.getElementById('departmentPersonInput').value.trim();
+            const people = parseMetricNumber(document.getElementById('departmentPeopleInput').value);
+            const actual = parseMetricNumber(document.getElementById('departmentActualInput').value);
+            const target = parseMetricNumber(document.getElementById('departmentTargetInput').value);
+            const date = document.getElementById('departmentDateInput').value;
+            if (!department) {
+                alert('请填写部门/小组名称');
+                return;
+            }
+            if (actual <= 0 && target <= 0) {
+                alert('请填写实际业绩或目标业绩');
+                return;
+            }
+
+            const effectivePeople = people > 0 ? people : person ? 1 : 0;
+            const progress = target > 0 ? `${((actual / target) * 100).toFixed(2)}%` : '0.00%';
+            const efficiency = effectivePeople > 0 ? (actual / effectivePeople).toFixed(2) : '0.00';
+            ensureDepartmentDataTable().push({
+                "部门": department,
+                "人员": person,
+                "人数": effectivePeople || '',
+                "实际业绩": actual.toFixed(2),
+                "目标业绩": target.toFixed(2),
+                "完成率": progress,
+                "人效产出": efficiency,
+                "日期": date
+            });
+            saveDataToStorage();
+            currentPage = 1;
+            loadSheetData("部门人效进度");
+            document.getElementById('departmentEntryForm').reset();
+            document.getElementById('departmentDateInput').value = new Date().toISOString().split('T')[0];
+        }
+
         // 绑定事件
         function bindEvents() {
             // 侧边栏导航点击
@@ -1571,6 +1667,8 @@
             document.getElementById('editBtn').addEventListener('click', function() {
                 openUploadModal();
             });
+
+            document.getElementById('departmentEntryForm').addEventListener('submit', addDepartmentEntry);
             
             // 全部删除按钮
             document.getElementById('deleteAllBtn').addEventListener('click', function() {
@@ -2407,6 +2505,7 @@
         function loadSheetData(sheetName) {
             // 更新页面标题
             document.getElementById('pageTitle').textContent = sheetName;
+            updatePageActionVisibility();
             // 清空内容
             document.getElementById('kpiCards').innerHTML = '';
             document.getElementById('tableHeader').innerHTML = '';
