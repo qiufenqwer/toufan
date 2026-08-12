@@ -756,6 +756,13 @@
                         <input type="text" class="form-control" id="departmentPersonInput" placeholder="姓名/负责人">
                     </div>
                     <div class="col-md-1">
+                        <label class="form-label" for="departmentRoleInput">身份</label>
+                        <select class="form-select" id="departmentRoleInput">
+                            <option value="部门成员">部门成员</option>
+                            <option value="部门负责人">部门负责人</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1">
                         <label class="form-label" for="departmentPeopleInput">人数</label>
                         <input type="number" min="0" step="1" class="form-control" id="departmentPeopleInput" placeholder="1">
                     </div>
@@ -1014,8 +1021,9 @@
                 allData["原始数据"] = [{"素材名称":"素材名称","素材ID":"素材ID","素材评价":"素材评价","素材时长":"素材时长","素材创建时间":"素材创建时间","素材来源":"素材来源","标签":"标签","整体消耗":"整体消耗","整体付费ROI":"整体付费ROI","整体成交金额":"整体成交金额","整体点击率":"整体点击率","整体转化率":"整体转化率","整体点击次数":"整体点击次数","整体展示次数":"整体展示次数","整体千次展示费用":"整体千次展示费用","素材关联的计划数量":"素材关联的计划数量","素材关联的商家数量":"素材关联的商家数量"}];
             }
             if (!allData["部门人效进度"] || allData["部门人效进度"].length === 0) {
-                allData["部门人效进度"] = [{"部门":"部门","人员":"人员","人数":"人数","实际业绩":"实际业绩","目标业绩":"目标业绩","完成率":"完成率","人效产出":"人效产出","日期":"日期"}];
+                allData["部门人效进度"] = [{"部门":"部门","人员":"人员","身份":"身份","人数":"人数","实际业绩":"实际业绩","目标业绩":"目标业绩","达成率":"达成率","人效产出":"人效产出","日期":"日期"}];
             }
+            normalizeDepartmentDataSchema();
 
             updateAllSheets();
             // 绑定事件
@@ -1229,10 +1237,15 @@
             const targetHeader = findMetricHeader(headers, ['目标业绩', '目标', '业绩目标', '销售目标', '目标金额', '计划业绩', 'KPI']);
             const progressHeader = findMetricHeader(headers, ['完成率', '进度', '达成率', '完成进度', 'progress', 'achievement']);
             const efficiencyHeader = findMetricHeader(headers, ['人效产出', '人效', '人均产出', '人均业绩', '人均销售', 'efficiency']);
+            const roleHeader = findMetricHeader(headers, ['身份', '角色', '岗位', 'role']);
+            const departmentsWithManagerTarget = new Set(data.slice(1)
+                .filter(row => row[roleHeader] === '部门负责人' && parseMetricNumber(row[targetHeader]) > 0)
+                .map(row => String(row[departmentHeader] || row[personHeader] || '未分部门').trim() || '未分部门'));
             const departmentMap = new Map();
 
             data.slice(1).forEach(row => {
                 const department = String(row[departmentHeader] || row[personHeader] || '未分部门').trim() || '未分部门';
+                const isManager = row[roleHeader] === '部门负责人';
                 if (!departmentMap.has(department)) {
                     departmentMap.set(department, {
                         department,
@@ -1247,6 +1260,11 @@
                     });
                 }
                 const item = departmentMap.get(department);
+                const target = parseMetricNumber(row[targetHeader]);
+                if (isManager) {
+                    item.target += target;
+                    return;
+                }
                 const peopleValue = parseMetricNumber(row[peopleHeader]);
                 const personName = String(row[personHeader] || '').trim();
                 if (peopleValue > 0) {
@@ -1257,7 +1275,9 @@
                     item.people += 1;
                 }
                 item.actual += parseMetricNumber(row[actualHeader]);
-                item.target += parseMetricNumber(row[targetHeader]);
+                if (!departmentsWithManagerTarget.has(department)) {
+                    item.target += target;
+                }
                 const progressValue = parseMetricPercent(row[progressHeader]);
                 if (progressValue > 0) {
                     item.progressSum += progressValue;
@@ -1305,6 +1325,9 @@
         }
 
         function renderDepartmentDashboard(data) {
+            recalculateDepartmentManagers();
+            allData["部门人效进度"].slice(1).forEach(recalculateDepartmentRow);
+            data = allData["部门人效进度"];
             if (window.mainChartInstance) {
                 window.mainChartInstance.destroy();
                 window.mainChartInstance = null;
@@ -1326,7 +1349,7 @@
                 {"指标名称":"总人数","指标值":formatCellValue(totals.people)},
                 {"指标名称":"总业绩","指标值":`¥${totals.actual.toFixed(2)}`},
                 {"指标名称":"业绩目标","指标值":`¥${totals.target.toFixed(2)}`},
-                {"指标名称":"整体完成率","指标值":`${totals.progress.toFixed(2)}%`},
+                {"指标名称":"整体达成率","指标值":`${totals.progress.toFixed(2)}%`},
                 {"指标名称":"平均人效产出","指标值":`¥${totals.efficiency.toFixed(2)}`}
             ];
             renderKPICards(summaryData);
@@ -1380,7 +1403,7 @@
                 data: {
                     labels: topProgressRows.length ? topProgressRows.map(item => item.department) : emptyLabels,
                     datasets: [{
-                        label: '业绩完成率',
+                        label: '业绩达成率',
                         data: topProgressRows.length ? topProgressRows.map(item => Number(item.progress.toFixed(2))) : [0],
                         backgroundColor: topProgressRows.length
                             ? topProgressRows.map(item => item.progress >= 100 ? '#2ecc71' : item.progress >= 80 ? '#f1c40f' : '#e74c3c')
@@ -1394,7 +1417,7 @@
                     maintainAspectRatio: false,
                     indexAxis: 'y',
                     plugins: {
-                        title: { display: true, text: '部门业绩进度完成情况' },
+                        title: { display: true, text: '部门业绩达成情况' },
                         legend: { display: true, position: 'top' },
                         tooltip: {
                             callbacks: {
@@ -1402,7 +1425,7 @@
                                     const item = topProgressRows[context.dataIndex];
                                     if (!item) return '暂无部门数据';
                                     return [
-                                        `完成率: ${item.progress.toFixed(2)}%`,
+                                        `达成率: ${item.progress.toFixed(2)}%`,
                                         `已完成: ¥${item.actual.toFixed(2)}`,
                                         `目标: ¥${item.target.toFixed(2)}`
                                     ];
@@ -1605,15 +1628,36 @@
 
         function ensureDepartmentDataTable() {
             if (!allData["部门人效进度"] || allData["部门人效进度"].length === 0) {
-                allData["部门人效进度"] = [{"部门":"部门","人员":"人员","人数":"人数","实际业绩":"实际业绩","目标业绩":"目标业绩","完成率":"完成率","人效产出":"人效产出","日期":"日期"}];
+                allData["部门人效进度"] = [{"部门":"部门","人员":"人员","身份":"身份","人数":"人数","实际业绩":"实际业绩","目标业绩":"目标业绩","达成率":"达成率","人效产出":"人效产出","日期":"日期"}];
             }
+            normalizeDepartmentDataSchema();
             return allData["部门人效进度"];
+        }
+
+        function normalizeDepartmentDataSchema() {
+            const data = allData["部门人效进度"];
+            if (!data || data.length === 0) return;
+            const headers = ["部门", "人员", "身份", "人数", "实际业绩", "目标业绩", "达成率", "人效产出", "日期"];
+            const currentHeaders = Object.keys(data[0]);
+            if (headers.every((header, index) => currentHeaders[index] === header)) return;
+            allData["部门人效进度"] = [
+                Object.fromEntries(headers.map(header => [header, header])),
+                ...data.slice(1).map(row => {
+                    const normalizedRow = {};
+                    headers.forEach(header => {
+                        normalizedRow[header] = header === "身份" ? (row[header] || "部门成员") :
+                            header === "达成率" ? (row[header] ?? row["完成率"] ?? '') : (row[header] ?? '');
+                    });
+                    return normalizedRow;
+                })
+            ];
         }
 
         function addDepartmentEntry(event) {
             event.preventDefault();
             const department = document.getElementById('departmentNameInput').value.trim();
             const person = document.getElementById('departmentPersonInput').value.trim();
+            const role = document.getElementById('departmentRoleInput').value;
             const people = parseMetricNumber(document.getElementById('departmentPeopleInput').value);
             const actual = parseMetricNumber(document.getElementById('departmentActualInput').value);
             const target = parseMetricNumber(document.getElementById('departmentTargetInput').value);
@@ -1633,17 +1677,21 @@
             ensureDepartmentDataTable().push({
                 "部门": department,
                 "人员": person,
+                "身份": role,
                 "人数": effectivePeople || '',
                 "实际业绩": actual.toFixed(2),
                 "目标业绩": target.toFixed(2),
-                "完成率": progress,
+                "达成率": progress,
                 "人效产出": efficiency,
                 "日期": date
             });
+            recalculateDepartmentManagers();
+            allData["部门人效进度"].slice(1).forEach(recalculateDepartmentRow);
             saveDataToStorage();
             currentPage = 1;
             loadSheetData("部门人效进度");
             document.getElementById('departmentEntryForm').reset();
+            document.getElementById('departmentRoleInput').value = '部门成员';
             document.getElementById('departmentDateInput').value = new Date().toISOString().split('T')[0];
         }
 
@@ -1714,19 +1762,44 @@
             document.getElementById('currentFilterInfo').textContent = `当前周：${formatDateValue(start)} 至 ${formatDateValue(end)}`;
         }
 
+        function recalculateDepartmentManagers() {
+            const data = ensureDepartmentDataTable();
+            const rows = data.slice(1);
+            rows.filter(row => row["身份"] === "部门负责人").forEach(managerRow => {
+                const managerDepartment = String(managerRow["部门"] || '').trim();
+                const managerDate = String(managerRow["日期"] || '').trim();
+                const memberRows = rows.filter(row =>
+                    row !== managerRow &&
+                    row["身份"] !== "部门负责人" &&
+                    String(row["部门"] || '').trim() === managerDepartment &&
+                    (!managerDate || String(row["日期"] || '').trim() === managerDate)
+                );
+                const memberActual = memberRows.reduce((sum, row) => sum + parseMetricNumber(row["实际业绩"]), 0);
+                const memberPeople = memberRows.reduce((sum, row) => sum + parseMetricNumber(row["人数"]), 0);
+                managerRow["实际业绩"] = memberActual.toFixed(2);
+                if (!managerRow["人数"] || parseMetricNumber(managerRow["人数"]) === 0) {
+                    managerRow["人数"] = memberPeople || '';
+                }
+            });
+        }
+
         function recalculateDepartmentRow(row) {
             const people = parseMetricNumber(row["人数"]);
             const actual = parseMetricNumber(row["实际业绩"]);
             const target = parseMetricNumber(row["目标业绩"]);
-            row["完成率"] = target > 0 ? `${((actual / target) * 100).toFixed(2)}%` : '0.00%';
+            row["达成率"] = target > 0 ? `${((actual / target) * 100).toFixed(2)}%` : '0.00%';
             row["人效产出"] = people > 0 ? (actual / people).toFixed(2) : '0.00';
         }
 
         function updateDepartmentCell(row, header, value) {
+            if (["完成率", "达成率", "人效产出"].includes(header)) return;
+            if (row["身份"] === "部门负责人" && header === "实际业绩") return;
             row[header] = value;
             if (["人数", "实际业绩", "目标业绩"].includes(header)) {
                 recalculateDepartmentRow(row);
             }
+            recalculateDepartmentManagers();
+            allData["部门人效进度"].slice(1).forEach(recalculateDepartmentRow);
             saveDataToStorage();
             currentPage = 1;
             loadSheetData("部门人效进度");
@@ -2760,17 +2833,36 @@
                 headers.forEach(header => {
                     const td = document.createElement('td');
                     if (currentSheet === "部门人效进度") {
-                        const input = document.createElement('input');
-                        input.className = 'form-control form-control-sm';
-                        input.value = row[header] ?? '';
-                        input.type = header.includes('日期') ? 'date' :
-                            ['人数', '实际业绩', '目标业绩', '人效产出'].includes(header) ? 'number' : 'text';
-                        if (input.type === 'number') {
-                            input.step = header === '人数' ? '1' : '0.01';
-                            input.min = '0';
+                        const isReadonlyMetric = ["完成率", "达成率", "人效产出"].includes(header) ||
+                            (row["身份"] === "部门负责人" && header === "实际业绩");
+                        if (header === "身份") {
+                            const select = document.createElement('select');
+                            select.className = 'form-select form-select-sm';
+                            ['部门成员', '部门负责人'].forEach(role => {
+                                const option = document.createElement('option');
+                                option.value = role;
+                                option.textContent = role;
+                                option.selected = (row[header] || '部门成员') === role;
+                                select.appendChild(option);
+                            });
+                            select.addEventListener('change', () => updateDepartmentCell(row, header, select.value));
+                            td.appendChild(select);
+                        } else if (isReadonlyMetric) {
+                            td.textContent = formatCellValue(row[header]);
+                            td.className = 'text-muted';
+                        } else {
+                            const input = document.createElement('input');
+                            input.className = 'form-control form-control-sm';
+                            input.value = row[header] ?? '';
+                            input.type = header.includes('日期') ? 'date' :
+                                ['人数', '实际业绩', '目标业绩'].includes(header) ? 'number' : 'text';
+                            if (input.type === 'number') {
+                                input.step = header === '人数' ? '1' : '0.01';
+                                input.min = '0';
+                            }
+                            input.addEventListener('change', () => updateDepartmentCell(row, header, input.value));
+                            td.appendChild(input);
                         }
-                        input.addEventListener('change', () => updateDepartmentCell(row, header, input.value));
-                        td.appendChild(input);
                     } else {
                         td.textContent = formatCellValue(row[header]);
                     }
