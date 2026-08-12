@@ -676,6 +676,11 @@
                     <i class="fas fa-database"></i> 原始数据
                 </a>
             </li>
+            <li class="nav-item">
+                <a href="#部门人效进度" class="nav-link" data-sheet="部门人效进度">
+                    <i class="fas fa-users"></i> 部门人效进度
+                </a>
+            </li>
             
         </ul>
         <div class="mt-auto p-3">
@@ -773,6 +778,7 @@
                                 <select class="form-select" id="targetSheet">
                                     <option value="核心指标汇总">核心指标汇总</option>
                                     <option value="原始数据">原始数据</option>
+                                    <option value="部门人效进度">部门人效进度</option>
                                     
                                 </select>
                             </div>
@@ -967,6 +973,9 @@
                 allData["核心指标汇总"] = [{"指标名称":"指标名称","指标值":"指标值"}];
                 allData["原始数据"] = [{"素材名称":"素材名称","素材ID":"素材ID","素材评价":"素材评价","素材时长":"素材时长","素材创建时间":"素材创建时间","素材来源":"素材来源","标签":"标签","整体消耗":"整体消耗","整体付费ROI":"整体付费ROI","整体成交金额":"整体成交金额","整体点击率":"整体点击率","整体转化率":"整体转化率","整体点击次数":"整体点击次数","整体展示次数":"整体展示次数","整体千次展示费用":"整体千次展示费用","素材关联的计划数量":"素材关联的计划数量","素材关联的商家数量":"素材关联的商家数量"}];
             }
+            if (!allData["部门人效进度"] || allData["部门人效进度"].length === 0) {
+                allData["部门人效进度"] = [{"部门":"部门","人员":"人员","人数":"人数","实际业绩":"实际业绩","目标业绩":"目标业绩","完成率":"完成率","人效产出":"人效产出","日期":"日期"}];
+            }
 
             updateAllSheets();
             // 绑定事件
@@ -1139,6 +1148,232 @@
             const numberValue = Number.parseFloat(text);
             if (!Number.isFinite(numberValue)) return text;
             return Number.isInteger(numberValue) ? text : numberValue.toFixed(2);
+        }
+
+        function parseMetricNumber(value) {
+            const parsed = Number.parseFloat(String(value ?? '').replace(/,/g, '').replace(/[^\d.-]/g, ''));
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function parseMetricPercent(value) {
+            const text = String(value ?? '').trim();
+            const parsed = parseMetricNumber(text);
+            if (!Number.isFinite(parsed)) return 0;
+            return text.includes('%') ? parsed : parsed > 0 && parsed <= 1 ? parsed * 100 : parsed;
+        }
+
+        function findMetricHeader(headers, keywords, excludedKeywords = []) {
+            const normalize = value => String(value || '').trim().toLowerCase();
+            const normalizedKeywords = keywords.map(normalize);
+            const normalizedExcluded = excludedKeywords.map(normalize);
+            const candidates = headers.filter(header =>
+                !normalizedExcluded.some(keyword => normalize(header).includes(keyword))
+            );
+            return candidates.find(header => normalizedKeywords.includes(normalize(header))) ||
+                candidates.find(header => normalizedKeywords.some(keyword => normalize(header).includes(keyword)));
+        }
+
+        function buildDepartmentMetrics(data) {
+            if (!data || data.length <= 1) {
+                return {
+                    rows: [],
+                    totals: { departments: 0, people: 0, actual: 0, target: 0, progress: 0, efficiency: 0 }
+                };
+            }
+
+            const headers = Object.keys(data[0]);
+            const departmentHeader = findMetricHeader(headers, ['部门', '小组', '团队', '组别', 'department', 'team']);
+            const personHeader = findMetricHeader(headers, ['人员', '员工', '姓名', '负责人', '成员', 'person', 'name']);
+            const peopleHeader = findMetricHeader(headers, ['人数', '人力', '人头', '编制', 'people', 'headcount']);
+            const actualHeader = findMetricHeader(headers, ['实际业绩', '业绩', '产出', '销售额', '销售金额', '成交金额', '收入', '营收', 'GMV', '实际完成']);
+            const targetHeader = findMetricHeader(headers, ['目标业绩', '目标', '业绩目标', '销售目标', '目标金额', '计划业绩', 'KPI']);
+            const progressHeader = findMetricHeader(headers, ['完成率', '进度', '达成率', '完成进度', 'progress', 'achievement']);
+            const efficiencyHeader = findMetricHeader(headers, ['人效产出', '人效', '人均产出', '人均业绩', '人均销售', 'efficiency']);
+            const departmentMap = new Map();
+
+            data.slice(1).forEach(row => {
+                const department = String(row[departmentHeader] || row[personHeader] || '未分部门').trim() || '未分部门';
+                if (!departmentMap.has(department)) {
+                    departmentMap.set(department, {
+                        department,
+                        people: 0,
+                        actual: 0,
+                        target: 0,
+                        progressSum: 0,
+                        progressCount: 0,
+                        efficiencySum: 0,
+                        efficiencyCount: 0,
+                        personNames: new Set()
+                    });
+                }
+                const item = departmentMap.get(department);
+                const peopleValue = parseMetricNumber(row[peopleHeader]);
+                const personName = String(row[personHeader] || '').trim();
+                if (peopleValue > 0) {
+                    item.people += peopleValue;
+                } else if (personName) {
+                    item.personNames.add(personName);
+                } else {
+                    item.people += 1;
+                }
+                item.actual += parseMetricNumber(row[actualHeader]);
+                item.target += parseMetricNumber(row[targetHeader]);
+                const progressValue = parseMetricPercent(row[progressHeader]);
+                if (progressValue > 0) {
+                    item.progressSum += progressValue;
+                    item.progressCount += 1;
+                }
+                const efficiencyValue = parseMetricNumber(row[efficiencyHeader]);
+                if (efficiencyValue > 0) {
+                    item.efficiencySum += efficiencyValue;
+                    item.efficiencyCount += 1;
+                }
+            });
+
+            const rows = Array.from(departmentMap.values()).map(item => {
+                const people = item.people > 0 ? item.people : item.personNames.size;
+                const progress = item.target > 0
+                    ? (item.actual / item.target) * 100
+                    : item.progressCount > 0 ? item.progressSum / item.progressCount : 0;
+                const efficiency = people > 0
+                    ? item.actual / people
+                    : item.efficiencyCount > 0 ? item.efficiencySum / item.efficiencyCount : 0;
+                return {
+                    department: item.department,
+                    people,
+                    actual: item.actual,
+                    target: item.target,
+                    progress,
+                    efficiency
+                };
+            }).sort((a, b) => b.actual - a.actual);
+
+            const totalPeople = rows.reduce((sum, item) => sum + item.people, 0);
+            const totalActual = rows.reduce((sum, item) => sum + item.actual, 0);
+            const totalTarget = rows.reduce((sum, item) => sum + item.target, 0);
+            return {
+                rows,
+                totals: {
+                    departments: rows.length,
+                    people: totalPeople,
+                    actual: totalActual,
+                    target: totalTarget,
+                    progress: totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0,
+                    efficiency: totalPeople > 0 ? totalActual / totalPeople : 0
+                }
+            };
+        }
+
+        function renderDepartmentDashboard(data) {
+            if (window.mainChartInstance) {
+                window.mainChartInstance.destroy();
+                window.mainChartInstance = null;
+            }
+            if (window.subChartInstance) {
+                window.subChartInstance.destroy();
+                window.subChartInstance = null;
+            }
+
+            const { rows, totals } = buildDepartmentMetrics(data);
+            const summaryData = [
+                {"指标名称":"指标名称","指标值":"指标值"},
+                {"指标名称":"部门数量","指标值":`${totals.departments}个`},
+                {"指标名称":"总人数","指标值":formatCellValue(totals.people)},
+                {"指标名称":"总业绩","指标值":`¥${totals.actual.toFixed(2)}`},
+                {"指标名称":"业绩目标","指标值":`¥${totals.target.toFixed(2)}`},
+                {"指标名称":"整体完成率","指标值":`${totals.progress.toFixed(2)}%`},
+                {"指标名称":"平均人效产出","指标值":`¥${totals.efficiency.toFixed(2)}`}
+            ];
+            renderKPICards(summaryData);
+            document.getElementById('chartCard').style.display = 'block';
+
+            const topEfficiencyRows = [...rows].sort((a, b) => b.efficiency - a.efficiency).slice(0, 10);
+            const topProgressRows = [...rows].sort((a, b) => b.progress - a.progress).slice(0, 10);
+            const emptyLabels = ['暂无部门数据'];
+            const ctx1 = document.getElementById('mainChart').getContext('2d');
+            const ctx2 = document.getElementById('subChart').getContext('2d');
+
+            window.mainChartInstance = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: topEfficiencyRows.length ? topEfficiencyRows.map(item => item.department) : emptyLabels,
+                    datasets: [{
+                        label: '人效产出',
+                        data: topEfficiencyRows.length ? topEfficiencyRows.map(item => Number(item.efficiency.toFixed(2))) : [0],
+                        backgroundColor: '#3498db',
+                        borderWidth: 0,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        title: { display: true, text: '部门人效产出排行' },
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: context => {
+                                    const item = topEfficiencyRows[context.dataIndex];
+                                    if (!item) return '暂无部门数据';
+                                    return [
+                                        `人效产出: ¥${item.efficiency.toFixed(2)}`,
+                                        `总业绩: ¥${item.actual.toFixed(2)}`,
+                                        `人数: ${formatCellValue(item.people)}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: { x: { beginAtZero: true }, y: { grid: { display: false } } }
+                }
+            });
+
+            window.subChartInstance = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: topProgressRows.length ? topProgressRows.map(item => item.department) : emptyLabels,
+                    datasets: [{
+                        label: '业绩完成率',
+                        data: topProgressRows.length ? topProgressRows.map(item => Number(item.progress.toFixed(2))) : [0],
+                        backgroundColor: topProgressRows.length
+                            ? topProgressRows.map(item => item.progress >= 100 ? '#2ecc71' : item.progress >= 80 ? '#f1c40f' : '#e74c3c')
+                            : ['#dee2e6'],
+                        borderWidth: 0,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        title: { display: true, text: '部门业绩进度完成情况' },
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: context => {
+                                    const item = topProgressRows[context.dataIndex];
+                                    if (!item) return '暂无部门数据';
+                                    return [
+                                        `完成率: ${item.progress.toFixed(2)}%`,
+                                        `已完成: ¥${item.actual.toFixed(2)}`,
+                                        `目标: ¥${item.target.toFixed(2)}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { callback: value => `${value}%` }
+                        },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
         }
         // 合并相同素材ID的数据
         function mergeDataByMaterialId(data) {
@@ -1772,7 +2007,36 @@
                     });
                     console.log('追加后的总行数:', allData[targetSheet].length);
                 } else {
-                    allData[targetSheet] = allData[targetSheet].concat(uploadedData);
+                    if (!allData[targetSheet] || allData[targetSheet].length <= 1) {
+                        allData[targetSheet] = uploadedData;
+                    } else {
+                        const oldHeaders = Object.keys(allData[targetSheet][0]);
+                        const newHeaders = Object.keys(uploadedData[0]);
+                        const mergedHeaders = [...oldHeaders, ...newHeaders.filter(header => !oldHeaders.includes(header))];
+                        if (JSON.stringify(oldHeaders) !== JSON.stringify(mergedHeaders)) {
+                            const headerRow = {};
+                            mergedHeaders.forEach(header => {
+                                headerRow[header] = header;
+                            });
+                            const normalizeRows = rows => rows.slice(1).map(row => {
+                                const normalizedRow = {};
+                                mergedHeaders.forEach(header => {
+                                    normalizedRow[header] = row[header] ?? '';
+                                });
+                                return normalizedRow;
+                            });
+                            allData[targetSheet] = [
+                                headerRow,
+                                ...normalizeRows(allData[targetSheet]),
+                                ...normalizeRows(uploadedData)
+                            ];
+                        } else {
+                            const dataToAppend = uploadedData.slice(1);
+                            dataToAppend.forEach(row => {
+                                allData[targetSheet].push({...row});
+                            });
+                        }
+                    }
                 }
             } else {
                 // 覆盖数据（使用上传文件的表头）
@@ -2164,6 +2428,8 @@
                 renderKPICards(data);
                 document.getElementById('chartCard').style.display = 'block';
                 renderCharts(data);
+            } else if (sheetName === "部门人效进度") {
+                renderDepartmentDashboard(data);
             } else {
                 document.getElementById('chartCard').style.display = 'none';
             }
